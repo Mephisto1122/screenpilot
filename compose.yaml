@@ -1,0 +1,44 @@
+# Default: the desktop, Chromium and dashboard run in Docker; inference runs in
+# native Ollama on the host so a Mac can use its Apple GPU (Metal).
+# Docker Desktop's Linux VM cannot reach the Mac GPU, so Ollama-in-Docker is CPU-only.
+#
+#   1. Install and open the Ollama app (https://ollama.com/download)
+#   2. ./run.sh            (or: docker compose up --build)
+#
+# Want Ollama inside Docker instead (Linux, NVIDIA, no host install)?
+#   docker compose -f compose.yaml -f compose.ollama.yaml up --build
+services:
+  screenpilot:
+    build: .
+    ports:
+      - "127.0.0.1:8080:8080"
+    shm_size: "1gb"
+    init: false
+    volumes:
+      - screenpilot-data:/data
+    extra_hosts:
+      # Built in on Docker Desktop; this makes it work on Linux Docker too.
+      - "host.docker.internal:host-gateway"
+    environment:
+      OLLAMA_URL: "${OLLAMA_URL:-http://host.docker.internal:11434}"
+      OLLAMA_MODEL: "${OLLAMA_MODEL:-qwen3-vl:4b}"
+      # Asks your Ollama to download the selected model if it is missing.
+      OLLAMA_AUTO_PULL: "${OLLAMA_AUTO_PULL:-1}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-gpt-6-luna}"
+      ANTHROPIC_MODEL: "${ANTHROPIC_MODEL:-claude-sonnet-5-5}"
+      SCREEN_FPS: "${SCREEN_FPS:-12}"
+      TZ: "${TZ:-UTC}"
+      UITARS_MODEL: "${UITARS_MODEL:-hf.co/Mungert/UI-TARS-1.5-7B-GGUF:Q4_K_M}"
+      SCREENPILOT_PLANNER: "${SCREENPILOT_PLANNER:-}"
+      HOLO_MODEL: "${HOLO_MODEL:-ahmadwaqar/holo-3.1:4b}"
+      SCREENPILOT_HOLO: "${SCREENPILOT_HOLO:-}"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health',timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+volumes:
+  screenpilot-data:

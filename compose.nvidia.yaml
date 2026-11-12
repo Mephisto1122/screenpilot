@@ -1,0 +1,13 @@
+# Optional NVIDIA acceleration for Linux / supported Windows WSL2 setups.
+# Requires the NVIDIA Container Toolkit.
+# Use together with compose.ollama.yaml:
+# docker compose -f compose.yaml -f compose.ollama.yaml -f compose.nvidia.yaml up --build
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Screenpilot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <a class="wordmark" href="/" aria-label="Screenpilot home">screenpilot</a>
+  <button class="mode" id="mode" aria-haspopup="dialog" aria-expanded="false">
+    <span class="mode-dot"></span><span id="mode-text">Connecting</span><span class="mode-meta" id="mode-meta"></span>
+  </button>
+  <div class="top-actions">
+    <span class="usage" id="usage" title="Tokens used since you last reset the count, across every task and worker">–</span>
+    <button class="quiet" id="open-settings">Settings</button>
+  </div>
+</header>
+
+<div class="mode-pop" id="mode-pop" role="dialog" aria-label="Current task" hidden>
+  <p class="pop-task" id="pop-task">Nothing running.</p>
+  <dl class="pop-facts">
+    <div><dt>Model</dt><dd id="pop-model">–</dd></div>
+    <div><dt>Steps</dt><dd id="pop-steps">–</dd></div>
+    <div><dt>Time</dt><dd id="pop-time">–</dd></div>
+    <div><dt>Cost</dt><dd id="pop-cost">–</dd></div>
+  </dl>
+  <p class="pop-head"><span id="ses-since">Total</span> <button class="link" id="usage-reset" title="Start counting from zero">Reset</button></p>
+  <dl class="pop-facts">
+    <div><dt>Tokens</dt><dd id="ses-total">–</dd></div>
+    <div><dt>In / out</dt><dd id="ses-io">–</dd></div>
+    <div><dt>On this Mac</dt><dd id="ses-local">–</dd></div>
+    <div><dt>Cloud</dt><dd id="ses-cloud">–</dd></div>
+    <div><dt>Calls</dt><dd id="ses-calls">–</dd></div>
+    <div><dt>Cost</dt><dd id="ses-cost">–</dd></div>
+  </dl>
+  <p class="pop-note" id="pop-note"></p>
+  <button class="quiet pop-log" id="pop-log">Show the log</button>
+</div>
+
+<main class="stage">
+  <section class="chat-pane" aria-label="Conversation and log">
+    <nav class="pane-tabs" role="tablist" aria-label="What to show">
+      <button role="tab" data-pane="chat" aria-selected="true">Chat</button>
+      <button role="tab" data-pane="log" aria-selected="false">Log</button>
+    </nav>
+    <section class="thread" id="thread" aria-live="polite" aria-label="Conversation">
+      <div class="empty" id="empty">
+        <p class="empty-line">What should I work on?</p>
+        <p class="empty-sub">Built for long jobs. Pick one to see how to ask, then make it yours.</p>
+        <div class="examples" id="examples"></div>
+        <p class="quick">Short ones work too:
+          <button class="idea">Find tomorrow's weather in Tel Aviv</button>
+          <button class="idea">Write today's to-do list in a note and save it</button>
+        </p>
+      </div>
+    </section>
+    <section class="livelog" id="livelog" aria-label="Log" hidden>
+      <div class="log-bar">
+        <label class="check"><input type="checkbox" id="log-all"> All workers</label>
+        <a class="quiet" id="log-download" href="/api/logs/download" download>Download log</a>
+      </div>
+      <ul class="list log-now" id="log-now" aria-label="In progress"></ul>
+      <div class="log" id="log-lines" role="log" aria-live="off"></div>
+      <p class="hint">Everything Screenpilot does and how long each part took. What is still running stays at the top. Passwords, keys, typed text and prompts are never written here.</p>
+    </section>
+    <form class="composer" id="composer">
+      <textarea id="input" rows="1" placeholder="Give the agent a task" aria-label="Task"></textarea>
+      <div class="composer-row">
+        <button type="button" class="target" id="target" hidden title="Run on this worker, or on whichever worker is free first"></button>
+        <div class="planner" role="radiogroup" aria-label="Who does the work">
+          <button type="button" role="radio" data-planner="private" title="Everything runs on this Mac">Private</button>
+          <button type="button" role="radio" data-planner="smart" title="A cloud model thinks; this Mac looks at the screen and clicks">Smart &amp; private</button>
+          <button type="button" role="radio" data-planner="fast" title="A cloud model sees the screen: fastest and strongest">Fastest</button>
+        </div>
+        <span class="privacy" id="privacy"></span>
+        <button class="send" id="send" type="submit" aria-label="Send">
+          <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M10 16V4M4.5 9.5 10 4l5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </form>
+  </section>
+  <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" aria-label="Drag to give the chat or the screen more room" tabindex="0"></div>
+  <section class="screen-block" aria-label="Agent desktop">
+    <nav class="rail" id="rail" aria-label="Workers" hidden>
+      <div class="rail-list" id="rail-list"></div>
+      <button class="rail-add" id="rail-add" aria-label="Add a worker" title="Add a worker with its own desktop">+</button>
+      <span class="rail-note" id="rail-note"></span>
+      <button class="rail-stop" id="rail-stop" hidden>Stop all</button>
+    </nav>
+    <div class="screen" id="screen" tabindex="0" data-state="idle" title="">
+      <div class="deck" id="deck"></div>
+      <img id="marks" class="marks" alt="Text and controls the agent can see, numbered" hidden>
+      <div class="ripples" id="ripples" aria-hidden="true"></div>
+      <p class="caption" id="caption" aria-live="polite"></p>
+      <div class="screen-offline" id="screen-offline" hidden><p>The desktop isn't running.</p><p class="sub">Start Screenpilot with <code>./run.sh</code>.</p></div>
+      <div class="turn" id="turn" hidden>
+        <div><strong id="turn-title">Your turn</strong><p id="turn-reason"></p></div>
+        <div class="turn-actions">
+          <form class="turn-code" id="turn-code-form" hidden><input id="turn-code" inputmode="numeric" autocomplete="one-time-code" maxlength="20" placeholder="Code" aria-label="Code"><button class="solid" type="submit">Send code</button></form>
+          <button class="ghost" id="turn-no-code" hidden>No code came</button>
+          <form class="turn-help" id="turn-help-form" hidden><input id="turn-help" maxlength="1000" placeholder="Tell me what to do (optional)" aria-label="Instructions"><button class="solid" type="submit" id="turn-help-send">Try again</button></form>
+          <button class="ghost" id="turn-stop" hidden>Stop the task</button>
+          <button class="solid" id="turn-continue">I'm done</button>
+          <button class="solid" id="turn-approve">Approve</button>
+          <button class="ghost" id="turn-deny">Deny</button>
+        </div>
+      </div>
+      <button class="takeover" id="takeover" aria-pressed="false">Take over</button>
+    </div>
+    <div class="controls" aria-label="Agent controls">
+      <button class="ctl" id="ctl-stop" disabled><span class="ctl-icon stop-icon"></span>Stop</button>
+      <button class="ctl" id="ctl-reset"><span class="ctl-icon reset-icon"></span><span id="ctl-reset-text">Reset desktop</span></button>
+      <button class="ctl" id="ctl-eyes" aria-pressed="false"><span class="ctl-icon eyes-icon"></span>Show what it sees</button>
+      <button class="ctl" id="ctl-new" title="Another agent with its own desktop, working at the same time"><span class="ctl-icon add-icon"></span>Add a worker</button>
+      <button class="ctl" id="ctl-close" hidden><span class="ctl-icon close-icon"></span><span id="ctl-close-text">Remove worker</span></button>
+    </div>
+    <div class="goal" id="goal" hidden>
+      <p class="goal-text" id="goal-text"></p>
+      <ol class="steps" id="steps"></ol>
+    </div>
+  </section>
+
+</main>
+
+<aside class="sheet" id="sheet" aria-label="Settings" hidden>
+  <div class="sheet-head"><h2>Settings</h2><button class="quiet" id="close-settings">Close</button></div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="models" aria-selected="true">Models</button>
+    <button role="tab" data-tab="you">You</button>
+    <button role="tab" data-tab="accounts">Accounts</button>
+    <button role="tab" data-tab="telegram">Telegram</button>
+    <button role="tab" data-tab="skills">Skills</button>
+    <button role="tab" data-tab="memory">Memory</button>
+  </nav>
+
+  <div class="tab" data-panel="models">
+    <label>Claude API key<input type="password" id="s-anthropic-key" autocomplete="new-password"></label>
+    <p class="hint" id="s-anthropic-status"></p>
+    <label>OpenAI API key<input type="password" id="s-openai-key" autocomplete="new-password"></label>
+    <p class="hint" id="s-openai-status"></p>
+    <p class="hint">Tasks run until they are done or you press Stop. Set a limit below only if you want one; leave it empty for no limit.</p>
+    <div class="pair"><label>Spend per task ($)<input type="number" step="0.5" min="0" id="s-run-budget" placeholder="No limit"></label>
+    <label>Spend per day ($)<input type="number" step="1" min="0" id="s-day-budget" placeholder="No limit"></label></div>
+    <label>Actions per task<input type="number" min="0" id="s-max-steps" placeholder="No limit"></label>
+    <label>Cloud model<select id="s-cloud"><option value="auto">Automatic</option><option value="anthropic">Claude</option><option value="openai">GPT</option></select></label>
+    <p class="hint">Automatic uses Claude when it has a key, otherwise GPT. Used by "Smart &amp; private" (it gets a text description of the screen; screenshots stay on this Mac) and by "Fastest" (it sees the screenshots).</p>
+    <label>GPT model<select id="s-openai-model">
+      <option value="gpt-6-luna">GPT-6 Luna: cheapest ($0.10 in, $0.50 out per million tokens)</option>
+      <option value="gpt-6.1-terra">GPT-6.1 Terra: made for computer use ($1, $5)</option>
+      <option value="gpt-6.1-sol">GPT-6.1 Sol: stronger reasoning ($2, $10)</option>
+      <option value="gpt-6-astra">GPT-6 Astra: the most capable ($10, $50)</option>
+    </select></label>
+    <p class="hint">Luna is fine for simple, repetitive work. For tasks that need judgment (which results are good, when to stop looking) Terra is the one built for working a computer from screenshots; a long task costs about ten times what it does on Luna.</p>
+    <label class="check"><input type="checkbox" id="s-thrifty"> Save money: Luna takes the routine steps</label>
+    <p class="hint">With Terra, Sol or Astra chosen above: Luna does the clicking, typing and moving around, at a tenth of the price or less. The model you chose still makes the plan, checks every step, takes over when Luna gets stuck, and takes every step that records a finding or writes the result, so what is kept and what is rejected stays its judgment.</p>
+    <p class="hint" id="s-modes"></p>
+    <label class="check"><input type="checkbox" id="s-ask"> Ask me when it gets stuck</label>
+    <p class="hint">Off: it works alone. When something does not work it tries another way, then makes a new plan, then leaves that part and goes on, and it always reports what it found and what it could not do. It still asks you for what only you can do: a CAPTCHA, a login, a code, and the approvals in Settings → You. You can write to it in the chat at any time.</p>
+    <label class="check"><input type="checkbox" id="s-contract"> Plan first, and check every step (Smart &amp; private, Fastest)</label>
+    <p class="hint">Before starting, the cloud model fixes what you will get and what proves each step is finished; it asks you first if something essential is missing. A step then counts only when a separate check confirms it. One extra request at the start and one per step.</p>
+    <label>UI-TARS model in Ollama<input id="s-uitars-model" autocomplete="off" placeholder="ui-tars"></label>
+    <p class="hint">"Private" uses UI-TARS when it is installed: an open model trained to control a computer, running on this Mac. Install it once with <code>UITARS=1 ./run.sh</code>.</p>
+    <p class="hint">Holo is an open model that points at the exact spot to click. It is used automatically whenever it is installed; install it once with <code>HOLO=1 ./run.sh</code>.</p>
+    <label>Holo model in Ollama<input id="s-holo-model" autocomplete="off" placeholder="ahmadwaqar/holo-3.1:4b"></label>
+    <label class="check"><input type="checkbox" id="s-mac-eyes"> Smart &amp; private: let this Mac's vision model look at the screen too</label>
+    <p class="hint">It tells Claude what each new page is, what is in the way and what the icons are, answers Claude's questions about the screen, and finds things Claude describes. Smarter, a few seconds slower per new page. Screenshots still never leave this Mac.</p>
+    <p class="hint">With Claude, each step costs about half a cent, so roughly $3 per hour of continuous work. The running cost shows next to "Working" at the top. Keys stay in memory on this computer unless you put them in <code>.env</code>.</p>
+    <button class="solid" id="save-models">Save models</button>
+  </div>
+
+  <div class="tab" data-panel="you" hidden>
+    <label>Phone number for sign-ups<input id="s-phone" type="tel" autocomplete="off" placeholder="+972 50 123 4567"></label>
+    <p class="hint">The agent gives this number when a site or app asks for one (sign-ups, two-step checks). When a code arrives on your phone, it asks you for it: type it on the screen here, or just send it to the Telegram bot.</p>
+    <label>Your details for forms<textarea id="s-profile" rows="6" placeholder="Name, city, date of birth…"></textarea></label>
+    <p class="hint">The agent only uses what you write here. It never makes up names, dates or numbers; it asks you instead.</p>
+    <label class="check"><input type="checkbox" id="s-approval"> Ask me before logging in, posting, commenting or sending, signing up, paying or deleting. Everything else runs without asking.</label>
+    <label>Phone pushes (ntfy topic)<input id="s-ntfy" autocomplete="off" placeholder="a hard-to-guess name"></label>
+    <p class="hint">Install the ntfy app and subscribe to the same topic to get a push when the agent needs you.</p>
+    <button class="solid" id="save-you">Save</button>
+  </div>
+
+  <div class="tab" data-panel="accounts" hidden>
+    <h3>Agent mailbox</h3>
+    <label>Address<input id="s-mail" autocomplete="off" placeholder="agent@gmail.com"></label>
+    <label>IMAP server<input id="s-imap" autocomplete="off"></label>
+    <label>App password<input type="password" id="s-mail-pass" autocomplete="new-password" placeholder="Leave empty to keep the saved one"></label>
+    <p class="hint" id="s-mail-status"></p>
+    <div class="row"><button class="solid" id="save-mail">Save mailbox</button><button class="ghost" id="test-mail">Test</button></div>
+    <h3>Saved logins</h3>
+    <p class="hint">The agent asks for a login by name and Screenpilot types it. Passwords never reach a model.</p>
+    <div class="pair"><label>Name<input id="l-name" autocomplete="off" placeholder="github"></label><label>Site<input id="l-site" autocomplete="off"></label></div>
+    <div class="pair"><label>Username<input id="l-user" autocomplete="off"></label><label>Password<input type="password" id="l-pass" autocomplete="new-password"></label></div>
+    <button class="solid" id="save-login">Save login</button>
+    <ul class="list" id="logins"></ul>
+  </div>
+
+  <div class="tab" data-panel="telegram" hidden>
+    <div id="tg-off">
+      <p class="hint">Talk to the agent from Telegram. In Telegram, open @BotFather, send <code>/newbot</code>, and paste the token it gives you here.</p>
+      <label>Bot token<input type="password" id="tg-token" autocomplete="off"></label>
+      <button class="solid" id="tg-connect">Connect Telegram</button>
+    </div>
+    <div id="tg-on" hidden>
+      <p id="tg-state"></p>
+      <p class="pair-code" id="tg-code" hidden></p>
+      <p class="hint" id="tg-error"></p>
+      <button class="ghost" id="tg-disconnect">Disconnect Telegram</button>
+    </div>
+  </div>
+
+  <div class="tab" data-panel="skills" hidden>
+    <h3>Know-how</h3>
+    <p class="hint">How someone good at it goes about a kind of work. When a task is planned, the ones it needs are chosen (at most three) and the agent works by them; "always" ones go with every task. Used in Smart &amp; private and Fastest. Switch one off to leave it out, open it to read it, or add your own.</p>
+    <ul class="list knowhow" id="knowhow"></ul>
+    <details class="kh-add">
+      <summary>Add your own</summary>
+      <label>Name<input id="kh-name" maxlength="80" placeholder="Search for flats in Tel Aviv"></label>
+      <label>When to use it<input id="kh-when" maxlength="300" placeholder="The task is about renting or buying a flat"></label>
+      <label>The know-how<textarea id="kh-text" rows="7" placeholder="- Start on the two sites with the most listings: ...&#10;- Skip agency duplicates: the same photos with another price ...&#10;- A listing counts only if it shows the floor, the size and a date."></textarea></label>
+      <button class="solid" id="kh-add">Add</button>
+    </details>
+    <h3>Routines it learned</h3>
+    <p class="hint">When a task finishes, its steps are saved. Ask for the exact same task again and the agent replays them, finding each button by its text, without asking a model at each step. Tasks that needed you or the mailbox are not saved.</p>
+    <ul class="list" id="skills"></ul>
+  </div>
+
+  <div class="tab" data-panel="memory" hidden>
+    <p class="hint">Things the agent keeps between tasks. It adds to this list itself; you can too.</p>
+    <div class="row"><input id="m-text" placeholder="Something it should remember"><button class="solid" id="m-add">Add</button></div>
+    <ul class="list" id="memory"></ul>
+    <button class="ghost" id="clear-chat">Clear the conversation</button>
+  </div>
+    <h3>In progress</h3>
+    <ul class="list" id="log-now"></ul>
+    <h3>What happened</h3>
+    <div class="log" id="log-lines" role="log" aria-live="off"></div>
+    <p class="hint">Everything Screenpilot does, with how long each part took. Something that hangs stays under "In progress" and gets "Still waiting" lines. Passwords, API keys, typed text and prompts are never in it. Download it to send it to whoever helps you.</p>
+  </div>
+  <p class="hint version" id="version"></p>
+</aside>
+
+<div class="toast" id="toast" role="status" hidden></div>
+<script src="/app.js"></script>
+</body>
+</html>

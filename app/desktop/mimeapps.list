@@ -1,0 +1,46 @@
+# Which app opens which kind of file on the agent's desktop (open_file, double-click in Files).
+# Copied to the desktop user's ~/.config at start.
+[Default Applications]
+application/pdf=chromium.desktop
+text/html=chromium.desktop
+application/xhtml+xml=chromium.desktop
+x-scheme-handler/http=chromium.desktop
+x-scheme-handler/https=chromium.desktop
+image/svg+xml=chromium.desktop
+video/mp4=chromium.desktop
+video/webm=chromium.desktop
+audio/mpeg=chromium.desktop
+audio/ogg=chromium.desktop
+audio/wav=chromium.desktop
+image/png=org.xfce.ristretto.desktop
+image/jpeg=org.xfce.ristretto.desktop
+image/gif=org.xfce.ristretto.desktop
+image/webp=org.xfce.ristretto.desktop
+image/bmp=org.xfce.ristretto.desktop
+image/tiff=org.xfce.ristretto.desktop
+text/plain=org.xfce.mousepad.desktop
+text/markdown=org.xfce.mousepad.desktop
+application/json=org.xfce.mousepad.desktop
+application/xml=org.xfce.mousepad.desktop
+text/x-python=org.xfce.mousepad.desktop
+application/x-shellscript=org.xfce.mousepad.desktop
+text/csv=libreoffice-calc.desktop
+application/vnd.openxmlformats-officedocument.spreadsheetml.sheet=libreoffice-calc.desktop
+application/vnd.ms-excel=libreoffice-calc.desktop
+application/vnd.oasis.opendocument.spreadsheet=libreoffice-calc.desktop
+application/vnd.openxmlformats-officedocument.wordprocessingml.document=libreoffice-writer.desktop
+application/msword=libreoffice-writer.desktop
+application/rtf=libreoffice-writer.desktop
+application/vnd.oasis.opendocument.text=libreoffice-writer.desktop
+application/vnd.openxmlformats-officedocument.presentationml.presentation=libreoffice-impress.desktop
+application/vnd.ms-powerpoint=libreoffice-impress.desktop
+application/vnd.oasis.opendocument.presentation=libreoffice-impress.desktop
+application/zip=xarchiver.desktop
+application/x-7z-compressed=xarchiver.desktop
+application/x-tar=xarchiver.desktop
+application/gzip=xarchiver.desktop
+application/x-compressed-tar=xarchiver.desktop
+application/x-bzip2=xarchiver.desktop
+application/x-xz=xarchiver.desktop
+application/vnd.rar=xarchiver.desktop
+inode/directory=pcmanfm.desktop

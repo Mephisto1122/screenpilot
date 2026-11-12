@@ -1,0 +1,20 @@
+#!/usr/bin/env python3
+"""Install Debian packages from the agent's terminal:  sudo sp-install gimp vlc
+Runs as root through sudo (the desktop user may run only this). Package names are checked, so it cannot be
+used to run anything else. Installed packages are remembered and installed again after an update."""
+import json, os, re, subprocess, sys
+
+names = [a.lower() for a in sys.argv[1:]]
+if not names or not all(re.fullmatch(r'[a-z0-9][a-z0-9+.-]{1,62}(:[a-z0-9]+)?', n) for n in names) or len(names) > 40:
+    sys.exit('usage: sudo sp-install package [package ...]   (Debian package names only)')
+env = {'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'DEBIAN_FRONTEND': 'noninteractive', 'LANG': 'C.UTF-8'}
+if not os.path.exists('/var/lib/apt/lists/lock') or len(os.listdir('/var/lib/apt/lists')) < 4:
+    subprocess.run(['apt-get', 'update', '-q'], env=env)
+code = subprocess.run(['apt-get', 'install', '-y', '-q', '--no-install-recommends', '--', *names], env=env).returncode
+if code == 0:
+    path = os.path.join(os.environ.get('SCREENPILOT_DATA', '/data'), 'apps.json')
+    try: kept = json.load(open(path)).get('packages', [])
+    except (OSError, ValueError): kept = []
+    with open(path + '.tmp', 'w') as f: json.dump({'packages': sorted(set(kept) | {n.split(':')[0] for n in names})}, f)
+    os.chmod(path + '.tmp', 0o600); os.replace(path + '.tmp', path)
+sys.exit(code)
