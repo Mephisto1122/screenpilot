@@ -126,6 +126,7 @@ class DesktopSession:
                 except OSError: pass
             sessions = self.profile / 'Default' / 'Sessions'
             restore = not self.fresh and sessions.is_dir() and any(sessions.iterdir())
+            if self.fresh: shutil.rmtree(sessions, ignore_errors=True)  # a reset means a fresh page: no tabs from before come back
             self.fresh = False
             # Restore the last tabs when there are some; otherwise (first start, or after a reset) open the start page.
             pages = ['--restore-last-session'] if restore else [START_PAGE]
@@ -171,9 +172,17 @@ class DesktopSession:
                 continue
 
     def _kill_browser(self):
-        if self.browser and self.browser.poll() is None:
-            try: os.killpg(self.browser.pid, signal.SIGTERM)
+        browser = self.browser
+        if browser and browser.poll() is None:
+            try: os.killpg(browser.pid, signal.SIGTERM)
             except OSError: pass
+            def make_sure():  # a browser that does not close when asked is closed anyway
+                try: browser.wait(timeout=4)
+                except subprocess.TimeoutExpired:
+                    self.say('The browser did not close when asked; closing it the hard way', 'warning')
+                    try: os.killpg(browser.pid, signal.SIGKILL)
+                    except OSError: pass
+            threading.Thread(target=make_sure, daemon=True).start()
 
     def _log_tail(self, lines=6):
         """The last lines the desktop's programs wrote, for the activity log."""
@@ -253,15 +262,16 @@ class Worker:
         return self.runner.start(instruction, planner, context=self.context() if context is None else context, carry=carry)
 
     def stop(self):
+        if self.agent['status'] == 'running': self.runner.update(message='Stopping', request_started_at=None)  # said at once; the step in flight ends first
         self.runner.cancel.set(); self.inputs.cancel()
 
     def reset(self):
         """Stop and give this worker a clean desktop: apps closed, browser reopened on a fresh page."""
         self.stop()
-        if self.runner.thread is not None: self.runner.thread.join(timeout=5)
+        if self.runner.thread is not None: self.runner.thread.join(timeout=2)
         if self.desktop.lab: self.desktop.lab_step = 0; self.desktop.lab_text = ''
         elif self.session: self.session.reset()
-        self.runner.reset_state()
+        self.runner.abandon()
         self.engine.event('Desktop reset')
         self.say('status', 'Desktop reset: apps closed and the browser reopened on a fresh page.')
 

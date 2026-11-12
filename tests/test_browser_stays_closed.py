@@ -13,7 +13,7 @@ from app.workers import DesktopSession
 
 class FakeProc:
     def __init__(self): self.done = threading.Event(); self.code = None; self.pid = 0
-    def wait(self): self.done.wait(); return self.code
+    def wait(self, timeout=None): self.done.wait(timeout); return self.code
     def poll(self): return self.code if self.done.is_set() else None
     def exit(self, code): self.code = code; self.done.set()
 

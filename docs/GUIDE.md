@@ -47,7 +47,8 @@ While it works:
 
 - The pill at the top shows the state (Working, Your turn, Needs your approval) with the step, time and cost.
 - The screen shows every click and keystroke. **Take over** hands you the mouse and keyboard.
-- **Stop** ends the task. **Reset desktop** also closes its apps and reopens the browser.
+- The last line of the chat shows what it is doing right now, with the step and the time.
+- **Stop** ends the task. **Reset desktop** (click twice) also closes its apps, reopens the browser on a fresh page and clears the dashboard at once, even in the middle of a step.
 
 The chat is not only for new tasks. In the cloud modes a short message is read first:
 
@@ -59,7 +60,7 @@ The chat is not only for new tasks. In the cloud modes a short message is read f
 | "two more like these" after a task | Continues the last task, starting from its notebook. |
 | Anything else, or a long brief | A new task. |
 
-A chat answer has a **Do this on the desktop instead** button, in case you meant work. When the agent has asked you something, your message is the answer. In Private mode a message is an instruction while a task runs and a new task otherwise.
+Results and answers are laid out to be read: titles, numbered items with their details, tables, quotes, code, links, and right-to-left text such as Hebrew. **Copy** takes the text, and **Ask for a change** reworks the latest one. A chat answer has a **Do this on the desktop instead** button, in case you meant work. When the agent has asked you something, your message is the answer. In Private mode a message is an instruction while a task runs and a new task otherwise.
 
 ## 4. How it works
 
@@ -139,6 +140,7 @@ Then message it a task. Questions and results arrive with a screenshot and butto
 
 ## 9. When something is wrong
 
+- **Is everything working?** `python3 check.py` tests a running Screenpilot on its real desktop without using a model: the picture arrives, an app opens, Reset desktop closes it and brings the browser back, a closed browser stays closed.
 - **The page does not load.** `./wait-ready.sh` says whether Screenpilot answers and its desktop runs. `docker compose logs --tail 80` shows why not.
 - **What is it doing?** The **Log** tab next to Chat shows every model request, action and error, live, and what is still in progress. **Download log** saves it. The log never contains passwords, keys, typed text or prompts.
 - **A cloud model cannot be reached.** The agent waits and tries again by itself.

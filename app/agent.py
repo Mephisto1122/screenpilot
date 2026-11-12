@@ -309,6 +309,7 @@ class AgentRunner:
         self.reply_event=threading.Event();self.reply_value=None
         self.inbox=[]  # what the user said in the chat while a task runs
         self.current=None;self.past=None  # the task object that is (or was last) running; what the last finished task left behind
+        self.epoch=0  # goes up with every task and every reset: a task from an earlier epoch may no longer touch the dashboard
         self.holo_off=False;self.holo_fails=0
         self.replay_wait=5.0  # seconds a replayed click waits for its button to appear
 
@@ -684,6 +685,13 @@ class AgentRunner:
         finally:self.update(request_started_at=None)
         return contract.parse_verdict(result)
 
+    def abandon(self):
+        """A reset: the dashboard is clean at once. A task still inside a model request cannot be interrupted there; it
+        ends by itself when the request returns, and until then nothing it says or sets reaches the dashboard."""
+        with self.lock:
+            self.epoch+=1;self.past=None
+            self.state={'status':'idle','message':'Ready','steps':0,'plan':[],'goal_index':0}
+
     def reset_state(self):
         with self.lock:
             if self.state.get('status') not in ('running','waiting'):
@@ -760,6 +768,7 @@ class AgentRunner:
             if self.state['status']=='running' or (self.thread is not None and self.thread.is_alive()):raise ValueError('A previous agent request is still finishing; wait before starting another task')
             if self.app.inputs.busy():raise ValueError('Wait for your own desktop actions to finish')
             self.cancel.clear()
+            self.epoch+=1;epoch=self.epoch
             run=uuid.uuid4().hex
             self.state={'status':'running','message':'Starting','steps':0,'run_id':run,'plan':[],
                         'goal_index':0,'planner':cfg['planner'],'mode':mode,'note':'','local_calls':0,'task':instruction[:300],'title':task_title(instruction),
@@ -767,7 +776,7 @@ class AgentRunner:
         self.context=str(context or '')[:6000]
         wid=getattr(self.app,'id',None)
         def worker():
-            task=TaskRun(self,instruction,cfg,run,plan_provider,executor)
+            task=TaskRun(self,instruction,cfg,run,plan_provider,executor);task.epoch=epoch
             if carry:task.notebook=[str(n) for n in carry.get('notebook',[])][-60:];task.typed=dict(carry.get('typed',{}))
             self.current=task;task.go()
         self.thread=threading.Thread(target=worker,daemon=True,name='visual-agent');self.thread.start()
@@ -787,6 +796,10 @@ class TaskRun:
         # What the runner provides: its state for the dashboard, questions to the user, and the per-mode steps.
         for n in ('update','say','public','_plan','_review','_uitars_step','_local_step','_text_actions','_allowed',
                   '_click_allowed','_ask_stuck','_wait','_replay','_save_skill','_trace_step','_verify','_aim'):setattr(self,n,getattr(runner,n))
+        # After a reset this task is no longer the one on the dashboard: what it still reports goes nowhere.
+        self.epoch=runner.epoch
+        self.update=lambda **fields:runner.update(**fields) if runner.epoch==self.epoch else None
+        self.say=lambda *a,**k:runner.say(*a,**k) if runner.epoch==self.epoch else None
         self.instruction=instruction;self.cfg=cfg;self.run_id=run_id;self.plan_provider=plan_provider;self.executor=executor
         self.asked=instruction  # as the user gave it; self.instruction grows with decisions and corrections
         self.history=[];self.goals=[instruction];self.goal_index=0;self.steps=0;self.done=False
@@ -1079,9 +1092,11 @@ class TaskRun:
     def finish(self):
         if self.state.get('waiting'):self.update(waiting=None)  # no Approve/Deny left showing for an ended task
         if self.eyes:self.eyes.close()  # a look still running is not needed any more
+        if self.runner.epoch!=self.epoch:
+            ACTIVITY.write('task','A task from before the reset has ended; nothing of it is shown');return
         st=self.public()
         # What this task leaves behind, for a follow-up in the chat ("three more", "why not X?"): see frontdesk.py.
-        self.runner.past={'task':self.asked,'result':str(st.get('final') or ''),'notebook':list(self.notebook),'typed':dict(self.typed),'status':st['status']}
+        if self.runner.epoch==self.epoch:self.runner.past={'task':self.asked,'result':str(st.get('final') or ''),'notebook':list(self.notebook),'typed':dict(self.typed),'status':st['status']}
         ACTIVITY.write('task',f"Ended: {st['status']} after {st.get('steps',0)} actions · {str(st.get('message',''))[:200]}",
                        'info' if st['status']=='completed' else 'warning',ms=round((time.time()-st['started_at'])*1000))
         if st['status']=='completed':

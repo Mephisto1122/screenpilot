@@ -237,6 +237,7 @@ function render(){
   if (!s.desktop.available) $('#screen-offline').innerHTML = `<p>The desktop isn't running.</p><p class="sub">${esc(s.desktop.error || '')} Start Screenpilot with <code>./run.sh</code>.</p>`;
   const busy = a.status === 'running' || a.status === 'waiting' || s.queued > 0;
   $('#ctl-stop').disabled = !busy;
+  renderLive();
   $('#takeover').disabled = a.status === 'running';
   if (a.status === 'running' && driving) setDriving(false);
 
@@ -301,22 +302,46 @@ function inline(raw){
   }).join('');
 }
 function rich(text){
+  // Plain text in, structure out: paragraphs, lists with details, facts (Label: value), headings, tables, quotes, code.
+  // Every block gets dir="auto", so Hebrew or Arabic reads right to left next to English.
   const out = []; let para = [], list = null;
   const short = t => { const m = LABEL.exec(t); return m && m[1].split(' ').length <= 3 && m[1].length <= 28 ? m : null };   // "Brands: ...", not a sentence with a colon
   const named = t => { const m = short(t); return m ? `<span class="rt-name">${esc(m[1])}:</span> ${inline(m[2])}` : inline(t) };
-  const detail = t => { const m = short(t); return m ? `<div class="rt-row"><span class="rt-k">${esc(m[1])}</span><span>${inline(m[2])}</span></div>` : `<div class="rt-sub">${inline(t)}</div>` };
-  const endPara = () => { if (para.length) { out.push(`<p>${para.map(inline).join('<br>')}</p>`); para = [] } };
+  const fact = t => { const m = short(t); return `<div class="rt-row"><span class="rt-k">${esc(m[1])}</span><span dir="auto">${inline(m[2])}</span></div>` };
+  const detail = t => short(t) ? fact(t) : `<div class="rt-sub" dir="auto">${inline(t)}</div>`;
+  const endPara = () => {
+    if (!para.length) return;
+    // Two or more "Label: value" lines in a row are facts: shown in two columns.
+    out.push(para.length > 1 && para.every(short) ? `<div class="rt-facts">${para.map(fact).join('')}</div>` : `<p dir="auto">${para.map(inline).join('<br>')}</p>`); para = [];
+  };
   const endList = () => {
     if (!list) return;
-    out.push(`<${list.type} class="rt-list${list.items.some(it => it.subs.length) ? ' roomy' : ''}">` +
-      list.items.map(it => `<li${it.n ? ` value="${it.n}"` : ''}>${named(it.head)}${it.subs.map(detail).join('')}</li>`).join('') + `</${list.type}>`);
+    out.push(`<${list.type} class="rt-list${list.items.some(it => it.subs.length) ? ' roomy' : ''}">` + list.items.map(it => {
+      const box = /^\[( |x|X)\]\s+(.*)$/.exec(it.head);   // - [ ] to do, - [x] done
+      return `<li dir="auto"${it.n ? ` value="${it.n}"` : ''}${box ? ` class="check${box[1] === ' ' ? '' : ' done'}"` : ''}>${named(box ? box[2] : it.head)}${it.subs.map(detail).join('')}</li>` }).join('') + `</${list.type}>`);
     list = null;
   };
   const item = (type, head, n) => { endPara(); if (!list || list.type !== type) { endList(); list = {type, items: []} } list.items.push({head, n, subs: []}); list.gap = false };
-  for (const line of String(text).replace(/\r/g, '').split('\n')) {
-    const t = line.trim(), indented = /^(\s{2,}|\t)/.test(line); let m;
+  const cells = l => l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+  const lines = String(text).replace(/\r/g, '').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i], t = line.trim(), indented = /^(\s{2,}|\t)/.test(line); let m;
+    if (/^```/.test(t)) {   // code, kept exactly as written
+      endPara(); endList(); const code = []; i++;
+      while (i < lines.length && !/^```/.test(lines[i].trim())) code.push(lines[i++]);
+      out.push(`<pre><code>${esc(code.join('\n'))}</code></pre>`); continue }
+    if (/^\|.*\|/.test(t)) {   // a table
+      endPara(); endList(); const rows = [];
+      while (i < lines.length && /^\|.*\|/.test(lines[i].trim())) rows.push(cells(lines[i++])); i--;
+      const head = rows.length > 1 && rows[1].every(c => /^:?-{2,}:?$/.test(c)) ? rows.shift() : null; if (head) rows.shift();
+      out.push(`<div class="rt-table"><table>${head ? `<thead><tr>${head.map(c => `<th dir="auto">${inline(c)}</th>`).join('')}</tr></thead>` : ''}<tbody>${rows.map(r => `<tr>${r.map(c => `<td dir="auto">${inline(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`); continue }
     if (!t) { endPara(); if (list) list.gap = true; continue }
-    if ((m = /^#{1,4}\s+(.+)$/.exec(t))) { endPara(); endList(); out.push(`<h4>${inline(m[1])}</h4>`); continue }
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(t)) { endPara(); endList(); out.push('<hr>'); continue }
+    if ((m = /^>\s?(.*)$/.exec(t))) {   // a quote
+      endPara(); endList(); const q = [m[1]];
+      while (i + 1 < lines.length && (m = /^>\s?(.*)$/.exec(lines[i + 1].trim()))) { q.push(m[1]); i++ }
+      out.push(`<blockquote dir="auto">${q.map(inline).join('<br>')}</blockquote>`); continue }
+    if ((m = /^(#{1,4})\s+(.+)$/.exec(t))) { endPara(); endList(); out.push(`<h4 class="${m[1].length < 3 ? 'big' : ''}" dir="auto">${inline(m[2])}</h4>`); continue }
     if ((m = /^([A-Z][A-Z0-9 &/'-]{2,32})(\s*\([^)]*\))?:?$/.exec(t))) {   // RULES, GOAL, FINAL RESULT (nothing else)
       endPara(); endList(); const words = m[1].trim(); out.push(`<h4>${esc(words[0] + words.slice(1).toLowerCase())}${m[2] ? `<span> ${esc(m[2].trim())}</span>` : ''}</h4>`); continue }
     if ((m = /^(\d{1,3})[.)]\s+(.+)$/.exec(t))) { item('ol', m[2], +m[1]); continue }
@@ -332,13 +357,17 @@ function rich(text){
 const dayOf = t => { const d = new Date(t * 1000), now = new Date(), days = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 864e5);
   return days === 0 ? 'Today' : days === 1 ? 'Yesterday' : d.toLocaleDateString([], {weekday: 'long', day: 'numeric', month: 'long'}) };
 const openMsgs = new Set();   // long messages of the user that were opened in full
+const seenMsgs = new Set();   // messages already shown once: only a new one fades in
+let firstPaint = true;
 function renderChat(){
   const msgs = chat.messages;
   $('#empty').hidden = msgs.length > 0;
   const waiting = state?.agent.status === 'waiting' ? state.agent.waiting : null;
   const lastAsk = [...msgs].reverse().find(m => m.kind === 'ask');
   // Every message of the agent: what it is, when, then the text.
-  const entry = (m, kind, title, body, meta = '') => `<article class="msg agent ${kind}"><header class="mh"><span class="mt">${title}</span><span class="mm">${meta}<time>${timeOf(m.time)}</time></span></header>${body}</article>`;
+  const isNew = m => !firstPaint && !seenMsgs.has(m.id) ? ' fresh' : '';
+  const copy = m => `<button class="mini" data-copy="${esc(m.id)}" title="Copy this text">Copy</button>`;
+  const entry = (m, kind, title, body, meta = '', tools = '') => `<article class="msg agent ${kind}${isNew(m)}"><header class="mh"><h3 class="mt">${title}</h3><span class="mm">${tools}${meta}<time>${timeOf(m.time)}</time></span></header>${body}</article>`;
   let day = '';
   const html = msgs.map(m => {
     const d = dayOf(m.time), sep = d !== day ? `<div class="msg day"><span>${esc(d)}</span></div>` : ''; day = d;
@@ -347,7 +376,7 @@ function renderChat(){
   function one(m){
     if (m.role === 'user') {
       const long = m.text.length > 700 || m.text.split('\n').length > 12, open = openMsgs.has(m.id);
-      return `<div class="msg user"><div class="bubble${long && !open ? ' clipped' : ''}">${rich(m.text)}</div>${long ? `<button class="more" data-more="${esc(m.id)}">${open ? 'Show less' : 'Show all'}</button>` : ''}<time>${timeOf(m.time)}${m.source === 'telegram' ? ', from Telegram' : ''}</time></div>`;
+      return `<div class="msg user${isNew(m)}"><div class="bubble${long && !open ? ' clipped' : ''}">${rich(m.text)}</div>${long ? `<button class="more" data-more="${esc(m.id)}">${open ? 'Show less' : 'Show all'}</button>` : ''}<time>${timeOf(m.time)}${m.source === 'telegram' ? ', from Telegram' : ''}</time></div>`;
     }
     if (m.kind === 'plan') {
       const row = (k, v) => `<div class="rt-row"><span class="rt-k">${k}</span><span>${v}</span></div>`;
@@ -364,19 +393,24 @@ function renderChat(){
         : `<div class="row"><button class="solid" data-reply="continue" data-ask="${aid}">I'm done</button></div>`;
       return entry(m, 'ask', say, rich(m.text) + hint);
     }
-    if (m.kind === 'status') return `<div class="msg agent status"><span>${inline(m.text)}</span><time>${timeOf(m.time)}</time></div>`;
+    if (m.kind === 'status') return `<div class="msg agent status${isNew(m)}"><span>${inline(m.text)}</span><time>${timeOf(m.time)}</time></div>`;
     if (m.kind === 'error') { const failed = /^I could not finish:\s*/.exec(m.text); return entry(m, 'error', failed ? 'Could not finish' : 'Problem', rich(failed ? m.text.slice(failed[0].length) : m.text)) }
-    if (m.kind === 'result') return entry(m, 'result', 'Result', rich(m.text), m.steps ? `<span>${m.steps} actions</span>` : '');
+    const last = m === msgs[msgs.length - 1] && !(state && ['running', 'waiting'].includes(state.agent.status));
+    // Under the newest result or answer: what you can do with it, in one press.
+    const next = extra => last ? `<div class="row next">${extra}<button class="ghost" data-change>Ask for a change</button></div>` : '';
+    if (m.kind === 'result') return entry(m, 'result', 'Result', rich(m.text) + next(''), m.steps ? `<span>${m.steps} actions</span>` : '', copy(m));
     // An answer given in the chat without touching the desktop: if work was meant, one press sends it there.
-    const redo = m.answered && m === msgs[msgs.length - 1] && !(state && ['running', 'waiting'].includes(state.agent.status))
-      ? `<div class="row"><button class="ghost" data-run="${esc(m.answered)}">Do this on the desktop instead</button></div>` : '';
+    const redo = m.answered ? next(`<button class="ghost" data-run="${esc(m.answered)}">Do this on the desktop instead</button>`) : '';
     const found = /^What I had found so far:\s*\n/.exec(m.text);
-    return entry(m, 'text', m.answered ? 'Answer' : found ? 'Found so far' : 'Update', rich(found ? m.text.slice(found[0].length) : m.text) + redo);
+    return entry(m, 'text', m.answered ? 'Answer' : found ? 'Found so far' : 'Update', rich(found ? m.text.slice(found[0].length) : m.text) + redo, '', copy(m));
   }
   const thread = $('#thread');
   const atBottom = thread.scrollTop + thread.clientHeight >= thread.scrollHeight - 60;
   thread.querySelectorAll('.msg').forEach(n => n.remove());
   thread.insertAdjacentHTML('beforeend', html);
+  const grew = msgs.some(m => !seenMsgs.has(m.id)); msgs.forEach(m => seenMsgs.add(m.id)); firstPaint = false;
+  const live = $('#live'); if (live) thread.appendChild(live);   // what it is doing right now stays last
+  if (grew && !atBottom && !firstChat) $('#jump').hidden = false;   // something new arrived while you were reading further up
   if (!msgs.length) thread.scrollTop = 0;  // the start: read it from the top
   else if (atBottom || firstChat) { thread.scrollTop = thread.scrollHeight; if (innerWidth <= 720) window.scrollTo(0, document.body.scrollHeight) }
   firstChat = false;
@@ -430,7 +464,7 @@ $('#composer').addEventListener('submit', e => {
   sending = true; $('#send').disabled = true;
   // Shown at once: reading the message (is it about the last result, or new work?) can take a few seconds.
   $('#empty').hidden = true;
-  $('#thread').insertAdjacentHTML('beforeend', `<div class="msg user pending"><div class="bubble">${rich(text)}</div></div><div class="msg agent status pending"><span>Reading your message…</span></div>`);
+  $('#thread').insertAdjacentHTML('beforeend', `<div class="msg user pending"><div class="bubble">${rich(text)}</div></div><div class="msg live pending"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span>Reading your message</span></div>`);
   $('#thread').scrollTop = $('#thread').scrollHeight;
   act(async () => {
     const body = {text, planner}; if (workers.length > 1 && target === 'any') body.any = true;
@@ -584,13 +618,16 @@ $('#ctl-stop').addEventListener('click', () => act(async () => { await api(wpath
 // Reset needs a second click within a few seconds, so it is never triggered by accident.
 let resetArmed = 0;
 $('#ctl-reset').addEventListener('click', () => {
-  if (Date.now() - resetArmed > 3500) {
+  if (Date.now() - resetArmed > 6000) {
     resetArmed = Date.now(); $('#ctl-reset').classList.add('confirm'); $('#ctl-reset-text').textContent = 'Click again to reset';
-    setTimeout(() => { if (Date.now() - resetArmed >= 3400) { $('#ctl-reset').classList.remove('confirm'); $('#ctl-reset-text').textContent = 'Reset desktop' } }, 3500);
+    toast('Click Reset again to close every app and start the browser fresh');
+    setTimeout(() => { if (resetArmed && Date.now() - resetArmed >= 5900) { $('#ctl-reset').classList.remove('confirm'); $('#ctl-reset-text').textContent = 'Reset desktop' } }, 6000);
     return;
   }
   resetArmed = 0; $('#ctl-reset').classList.remove('confirm'); $('#ctl-reset-text').textContent = 'Resetting…';
-  act(async () => { await api(wpath('reset'), {}); toast('Desktop reset'); await refresh() }).finally(() => $('#ctl-reset-text').textContent = 'Reset desktop');
+  $('#ctl-reset').disabled = true;
+  act(async () => { await api(wpath('reset'), {}); chatRev = -1; toast('Desktop reset: apps closed, browser on a fresh page'); await refresh() })
+    .finally(() => { $('#ctl-reset').disabled = false; $('#ctl-reset-text').textContent = 'Reset desktop' });
 });
 // Show what the local eyes see: numbered text and controls over the live screen.
 let eyesTimer = null;
@@ -603,6 +640,9 @@ $('#ctl-eyes').addEventListener('click', () => {
 function loadMarks(){ const id = sel, i = new Image(); i.onload = () => { if (!$('#marks').hidden && id === sel) $('#marks').src = i.src }; i.src = `/api/w/${id}/marks?t=${Date.now()}` }
 $('#thread').addEventListener('click', e => {
   const r = e.target.dataset.reply; if (r) return reply(r, e.target.dataset.ask);
+  const cp = e.target.dataset.copy;
+  if (cp) { const m = chat.messages.find(x => x.id === cp); if (m) copyText(m.text).then(() => { e.target.textContent = 'Copied'; e.target.classList.add('done'); setTimeout(() => { e.target.textContent = 'Copy'; e.target.classList.remove('done') }, 1600) }); return }
+  if (e.target.dataset.change !== undefined) { input.focus(); input.placeholder = 'Say what to change: shorter, a table, another language, two more…'; return }
   const more = e.target.dataset.more;
   if (more) { openMsgs.has(more) ? openMsgs.delete(more) : openMsgs.add(more); return renderChat() }
   const run = e.target.dataset.run;
@@ -750,6 +790,25 @@ function renderTelegram(){
 $('#tg-connect').addEventListener('click', () => act(async () => { chat.telegram = await api('telegram', {token: $('#tg-token').value}); $('#tg-token').value = ''; renderTelegram(); toast('Telegram connected') }));
 $('#tg-disconnect').addEventListener('click', () => act(async () => { chat.telegram = await api('telegram', {disconnect: true}); renderTelegram(); toast('Telegram disconnected') }));
 
+/* What the agent is doing right now, as the last line of the chat: three moving dots and the words. */
+function renderLive(){
+  const a = state?.agent, on = a && a.status === 'running', thread = $('#thread');
+  let el = $('#live');
+  if (!on) { if (el) el.remove(); return }
+  const atBottom = thread.scrollTop + thread.clientHeight >= thread.scrollHeight - 60;
+  if (!el) { thread.insertAdjacentHTML('beforeend', '<div id="live" class="live"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span id="live-text"></span><span id="live-meta"></span></div>'); el = $('#live') }
+  const step = a.plan && a.plan.length > 1 ? `step ${Math.min(a.goal_index + 1, a.plan.length)} of ${a.plan.length}` : '';
+  $('#live-text').textContent = a.message || 'Working';
+  $('#live-meta').textContent = [step, a.started_at ? clock(Date.now() / 1000 - a.started_at) : ''].filter(Boolean).join(', ');
+  if (atBottom) thread.scrollTop = thread.scrollHeight;
+}
+$('#thread').insertAdjacentHTML('afterend', '<button type="button" class="jump" id="jump" hidden>New messages</button>');
+$('#jump').addEventListener('click', () => { const t = $('#thread'); t.scrollTo({top: t.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'}); $('#jump').hidden = true });
+$('#thread').addEventListener('scroll', () => { const t = $('#thread'); if (t.scrollTop + t.clientHeight >= t.scrollHeight - 60) $('#jump').hidden = true }, {passive: true});
+async function copyText(text){
+  try { await navigator.clipboard.writeText(text) }
+  catch { const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove() }
+}
 function renderKnowhow(){
   $('#knowhow').innerHTML = (chat.knowhow || []).map(k => `<li><details><summary><span>${esc(k.name)}<small>${k.use === 'always' ? 'Always. ' : k.use === 'planning' ? 'For the plan. ' : ''}${esc(k.when)}</small></span></summary>${rich(k.text)}${k.builtin ? '' : `<button class="ghost" data-del-kh="${esc(k.id)}">Remove</button>`}</details><label class="switch"><input type="checkbox" data-kh="${esc(k.id)}" ${k.on ? 'checked' : ''} aria-label="Use ${esc(k.name)}"> On</label></li>`).join('');
 }
