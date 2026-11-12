@@ -21,6 +21,8 @@ An AI agent with its own computer. Give it a long job: it plans, works on a Linu
 Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and [Ollama](https://ollama.com/download), then:
 
 ```bash
+git clone https://github.com/Mephisto1122/screenpilot
+cd screenpilot
 ./run.sh
 ```
 
