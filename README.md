@@ -40,4 +40,6 @@ Open **http://localhost:8080** and type a task.
 
 The [guide](docs/GUIDE.md) covers setup options, approvals and accounts, Telegram, costs, know-how, troubleshooting, security and tests.
 
+Released under the [MIT licence](LICENSE).
+
 <sub>The picture is from a real session. The video and the screenshots in the guide show a sample task with made-up companies, run in the built-in test mode with a scripted model; there the dark pane stands in for the live Linux desktop.</sub>
