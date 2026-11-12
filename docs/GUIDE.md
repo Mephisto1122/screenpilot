@@ -113,6 +113,8 @@ The agent asks only for what only you can do.
 
 The desktop has Chromium, a text editor, a file manager, LibreOffice, an image viewer, an archive manager and a terminal. The agent can open any file in the right app, run commands and read their output, and install Debian packages.
 
+The browser opens with the desktop. Close it when you do not need it: it stays closed until you, the agent or **Reset desktop** opens it again.
+
 Its home folder, the browser's sign-ins and the installed apps are kept in the `screenpilot-data` volume and survive restarts and updates. `docker compose down -v` deletes them.
 
 **Several workers.** **Add a worker** starts another agent with its own desktop, browser and conversation. Workers run at the same time and share memory, logins, settings and Telegram. Switch with `[` and `]` or the number keys. Each costs about 0.5 to 1 GB of memory; the limit is 6 (`SCREENPILOT_MAX_WORKERS`).

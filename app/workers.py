@@ -29,18 +29,21 @@ LAUNCH = {'notes': ['mousepad'], 'files': ['pcmanfm', '{home}/Documents'], 'docu
 
 
 class DesktopSession:
-    """The processes behind one worker's desktop. The browser is reopened if it is closed."""
+    """The processes behind one worker's desktop. The browser opens with the desktop and comes back after a crash
+    or a reset; closed by hand, it stays closed until it is asked for (the desktop is a computer, not only a browser)."""
     def __init__(self, wid, computer):
         self.wid = wid
         self.computer = computer
         self.display = f':{98 + wid}'
         self.env = computer.env(self.display)  # the desktop's own environment: no API keys
         self.profile = computer.data / ('chromium-profile' if wid == 1 else f'chromium-profile-{wid}')
+        # A browser started from the taskbar or by a link uses this desktop's profile too (see desktop/chromium-flags).
+        self.env['SCREENPILOT_PROFILE'] = str(self.profile)
         self.log = f'/tmp/screenpilot-desktop-{wid}.log'
         self.procs, self.browser = [], None
         self.fresh = False
         self.stopping = threading.Event()
-        self.wake = threading.Event()  # reopen a closed browser now instead of after a pause
+        self.wake = threading.Event()  # open the browser now: it was asked for, or a pause should end early
         self.shell = {}  # window manager and taskbar, restarted if they stop
         self.error = None
 
@@ -97,7 +100,7 @@ class DesktopSession:
         """Open an app on this desktop (open_app). Raises ActionFailed if it is not installed."""
         if app == 'browser':
             if self.browser is None or self.browser.poll() is not None:
-                self.wake.set(); return  # the browser loop opens it again right away
+                self.wake.set(); return  # the browser loop opens it right away
             args = [os.getenv('SCREENPILOT_BROWSER', 'chromium'), f'--user-data-dir={self.profile}', '--no-sandbox', '--new-window', START_PAGE]
         else:
             args = [a.format(home=self.computer.home) for a in LAUNCH.get(app, [app])]
@@ -135,9 +138,16 @@ class DesktopSession:
             began = time.monotonic()
             self.say('Browser started' + (' (restoring the last tabs)' if restore else ''))
             code = self.browser.wait()
-            if not self.stopping.is_set():
-                self.say(f'Browser closed (exit {code}) after {time.monotonic() - began:.0f} s; opening it again' +
-                         (self._log_tail() if code not in (0, -15) else ''), 'warning' if code not in (0, -15) else 'info')
+            if self.stopping.is_set(): return
+            if code == 0 and not self.fresh:
+                # Closed by whoever is using the desktop. It stays closed; open_app (the agent, or "open the browser"
+                # in a task) and Reset desktop bring it back, and the taskbar icon starts one too.
+                self.say(f'Browser closed after {time.monotonic() - began:.0f} s. It stays closed until it is opened again')
+                while not self.wake.wait(1):
+                    if self.stopping.is_set(): return
+                self.wake.clear(); continue
+            if not self.fresh:  # it stopped by itself: that is a crash, so it comes back
+                self.say(f'Browser stopped (exit {code}) after {time.monotonic() - began:.0f} s; opening it again' + self._log_tail(), 'warning')
             self.wake.wait(2); self.wake.clear()
 
     def _kill_apps(self):
@@ -181,6 +191,7 @@ class DesktopSession:
         self.fresh = True
         self._kill_browser()
         self._kill_apps()
+        self.wake.set()  # a browser that was closed by hand comes back too
 
     def stop(self):
         self.stopping.set(); self.wake.set()

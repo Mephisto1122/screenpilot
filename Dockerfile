@@ -22,7 +22,8 @@ RUN useradd -m -u 1001 -s /bin/bash desk && mkdir -p /data /opt/screenpilot /tmp
 WORKDIR /opt/screenpilot
 COPY app ./app
 # The agent's terminal may install packages (and only that) as root: sudo sp-install <packages>
-RUN install -m 0755 app/desktop/sp-install /usr/local/bin/sp-install && \
+RUN install -D -m 0644 app/desktop/chromium-flags /etc/chromium.d/screenpilot && \
+    install -m 0755 app/desktop/sp-install /usr/local/bin/sp-install && \
     echo 'desk ALL=(root) NOPASSWD: /usr/local/bin/sp-install' > /etc/sudoers.d/screenpilot && chmod 0440 /etc/sudoers.d/screenpilot
 COPY start.sh ./start.sh
 RUN chmod +x ./start.sh

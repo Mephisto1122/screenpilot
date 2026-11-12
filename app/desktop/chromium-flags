@@ -1,0 +1,5 @@
+# Read by Debian's Chromium launcher (/etc/chromium.d). On a Screenpilot desktop every Chromium, however it is started
+# (the taskbar, a link, a command), uses that desktop's own profile, so sign-ins and tabs are the same ones.
+if [ -n "$SCREENPILOT_PROFILE" ]; then
+  export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --user-data-dir=$SCREENPILOT_PROFILE --no-sandbox --disable-dev-shm-usage --no-first-run --no-default-browser-check --password-store=basic --test-type"
+fi
